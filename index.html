@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>代購極速打點系統 V18 (全專案備份版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        canvas { touch-action: none; width: 100%; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .view { display: none; }
+        .view.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans h-screen flex flex-col overflow-hidden text-gray-900">
+
+    <header class="bg-gray-800 text-white shadow-md flex-none z-10">
+        <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+            <button id="navBackBtn" class="text-gray-300 hover:text-white font-bold hidden transition">
+                <span class="text-xl mr-1">‹</span> 返回
+            </button>
+            <h1 id="navTitle" class="text-lg font-bold flex-1 text-center truncate">📦 代購專案大廳</h1>
+            <div class="w-12"></div>
+        </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto pb-24">
+        <div class="max-w-3xl mx-auto p-4">
+
+            <div id="view-projects" class="view active space-y-4">
+                <button onclick="createNewProject()" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 px-4 rounded-xl shadow transition text-lg flex items-center justify-center">
+                    <span class="text-2xl mr-2">+</span> 建立新連線專案
+                </button>
+                <div id="projectList" class="grid gap-3 mt-6"></div>
+            </div>
+
+            <div id="view-dashboard" class="view space-y-4">
+                <div class="bg-white p-4 rounded-xl shadow border-l-4 border-blue-500">
+                    <input type="text" id="dashboardProjectName" class="text-xl font-bold text-gray-800 w-full bg-transparent border-b border-dashed border-gray-300 focus:outline-none focus:border-blue-500 pb-1" onchange="updateProjectName(this.value)">
+                    <p class="text-sm text-gray-500 mt-2" id="dashboardStats">共 0 張照片 / 0 件商品</p>
+                </div>
+
+                <div class="flex space-x-2">
+                    <button onclick="exportProjectData()" class="flex-1 bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 px-2 rounded-xl shadow transition text-sm">
+                        📝 匯出文字
+                    </button>
+                    <button id="exportImgsBtn" onclick="exportProjectImages()" class="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-2 rounded-xl shadow transition text-sm">
+                        🖼️ 匯出圖片
+                    </button>
+                </div>
+                <button onclick="exportProjectBackup()" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-4 rounded-xl shadow transition text-sm">
+                    📦 複製全專案備份碼
+                </button>
+
+                <h2 class="font-bold text-gray-700 mt-6 mb-2 flex items-center">
+                    📸 照片列表
+                </h2>
+                
+                <div class="grid grid-cols-2 gap-2 mb-4">
+                    <button id="toggleImportBtn" onclick="toggleImportArea()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 px-2 rounded-xl text-xs border border-gray-300 shadow-sm transition">
+                        📥 匯入專案備份
+                    </button>
+                    <label class="bg-blue-100 hover:bg-blue-200 text-blue-700 text-center font-bold py-3 px-2 rounded-xl border border-blue-300 cursor-pointer shadow-sm transition text-xs flex items-center justify-center">
+                        ➕ 上傳新照片
+                        <input type="file" id="newPhotoUpload" accept="image/*" class="hidden">
+                    </label>
+                </div>
+
+                <div id="importArea" class="hidden flex flex-col space-y-2 bg-gray-50 p-3 rounded-xl border border-gray-200 mb-4">
+                    <textarea id="importTextarea" rows="3" class="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-400" placeholder="請貼上 BACKUP:: 開頭的全專案備份碼..."></textarea>
+                    <button onclick="handleImport()" class="bg-gray-800 text-white font-bold py-2 rounded-lg text-sm transition">執行還原</button>
+                </div>
+
+                <div id="photoList" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+                
+                <button onclick="deleteCurrentProject()" class="w-full mt-12 bg-red-50 text-red-500 font-bold py-3 px-4 rounded-xl text-sm transition hover:bg-red-100">
+                    🗑️ 刪除整個專案
+                </button>
+            </div>
+
+            <div id="view-editor" class="view space-y-4">
+                <div class="bg-white p-3 rounded-xl shadow flex items-center justify-between">
+                    <input type="text" id="editorPhotoName" class="font-bold text-gray-800 flex-1 bg-transparent border-b border-dashed border-gray-300 focus:outline-none focus:border-blue-500 pb-1" onchange="updatePhotoName(this.value)">
+                </div>
+
+                <div class="bg-blue-50 p-3 rounded-xl shadow-inner border border-blue-100">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-bold text-blue-800">下個編號 (跨圖連號)：</span>
+                        <input type="number" id="nextNumber" class="w-16 p-1 text-center border border-blue-300 rounded font-bold text-blue-600">
+                    </div>
+                    <div id="rateSettingsContainer" class="space-y-1 mb-2"></div>
+                    <button onclick="addGlobalCat()" class="w-full bg-blue-100 text-blue-700 font-bold py-1 px-4 rounded text-xs border border-blue-300">＋ 新增分類</button>
+                </div>
+
+                <div id="pendingUploadArea" class="hidden bg-yellow-50 p-6 rounded-xl shadow border border-yellow-300 text-center mb-4">
+                    <p class="text-yellow-800 font-bold mb-2">此為還原的備份照片，請補傳原圖以顯示打點</p>
+                    <p id="pendingImageName" class="text-sm text-yellow-600 mb-4"></p>
+                    <label class="bg-yellow-500 hover:bg-yellow-600 text-white py-3 px-6 rounded-xl shadow cursor-pointer font-bold transition">
+                        📸 選擇原圖解鎖
+                        <input type="file" accept="image/*" class="hidden" onchange="handlePendingUpload(event)">
+                    </label>
+                </div>
+
+                <p id="canvasHint" class="text-xs text-gray-400 text-center">👇 點擊照片標記 (照片原圖已存入 IndexedDB)</p>
+                
+                <div id="canvasContainer" class="bg-white p-1 rounded-xl shadow">
+                    <canvas id="photoCanvas" class="w-full rounded-lg"></canvas>
+                </div>
+
+                <div id="itemsContainer" class="space-y-3 mt-4"></div>
+
+                <button onclick="downloadCurrentImage()" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-4 rounded-xl shadow mt-6 transition">
+                    🖼️ 下載此單張圖片 (存入相簿)
+                </button>
+            </div>
+
+        </div>
+    </main>
+
+    <div id="toast" class="fixed bottom-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-2 rounded-full shadow-2xl text-sm font-bold opacity-0 pointer-events-none transition-opacity duration-300 z-50 whitespace-nowrap">
+        通知
+    </div>
+
+    <script>
+        const DB_NAME = 'ProxyAppProDB_V18';
+        const DB_VERSION = 1;
+        let db;
+
+        async function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onupgradeneeded = (e) => {
+                    const database = e.target.result;
+                    if (!database.objectStoreNames.contains('projects')) database.createObjectStore('projects', { keyPath: 'id' });
+                    if (!database.objectStoreNames.contains('photos')) {
+                        const photoStore = database.createObjectStore('photos', { keyPath: 'id' });
+                        photoStore.createIndex('projectId', 'projectId', { unique: false });
+                    }
+                };
+                request.onsuccess = (e) => { db = e.target.result; resolve(); };
+                request.onerror = (e) => reject(e);
+            });
+        }
+
+        const IDB = {
+            put: (store, data) => new Promise(res => {
+                const tx = db.transaction(store, 'readwrite');
+                tx.objectStore(store).put(data);
+                tx.oncomplete = () => res(true);
+            }),
+            get: (store, id) => new Promise(res => {
+                const req = db.transaction(store, 'readonly').objectStore(store).get(id);
+                req.onsuccess = () => res(req.result);
+            }),
+            getAll: (store) => new Promise(res => {
+                const req = db.transaction(store, 'readonly').objectStore(store).getAll();
+                req.onsuccess = () => res(req.result);
+            }),
+            getByIndex: (store, idx, val) => new Promise(res => {
+                const req = db.transaction(store, 'readonly').objectStore(store).index(idx).getAll(val);
+                req.onsuccess = () => res(req.result);
+            }),
+            delete: (store, id) => new Promise(res => {
+                const tx = db.transaction(store, 'readwrite');
+                tx.objectStore(store).delete(id);
+                tx.oncomplete = () => res(true);
+            })
+        };
+
+        let currentProjectId = null, currentPhotoId = null;
+        let loadedImg = new Image();
+        let currentMarkers = [], allProjectPhotos = [];
+        let categories = JSON.parse(localStorage.getItem('proxyAppCategories')) || [{ id: 'cat_0', name: '未分類', rate: 1.0 }];
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.innerText = msg; t.style.opacity = '1';
+            setTimeout(() => t.style.opacity = '0', 3000);
+        }
+
+        async function navigateTo(view, data = null) {
+            document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+            document.getElementById(`view-${view}`).classList.add('active');
+            const navBtn = document.getElementById('navBackBtn'), navTitle = document.getElementById('navTitle');
+            if (view === 'projects') {
+                navBtn.classList.add('hidden'); navTitle.innerText = "📦 代購專案大廳";
+                await renderProjects();
+            } else if (view === 'dashboard') {
+                navBtn.classList.remove('hidden'); navBtn.onclick = () => navigateTo('projects');
+                currentProjectId = data; await renderDashboard();
+            } else if (view === 'editor') {
+                navBtn.classList.remove('hidden'); navBtn.onclick = async () => { await saveCurrentPhoto(); navigateTo('dashboard', currentProjectId); };
+                currentPhotoId = data; await renderEditor();
+            }
+        }
+
+        async function createNewProject() {
+            const name = prompt("輸入新專案名稱："); if (!name) return;
+            const newP = { id: 'P_' + Date.now(), name, createdAt: Date.now() };
+            await IDB.put('projects', newP); renderProjects();
+        }
+
+        async function renderProjects() {
+            const projects = await IDB.getAll('projects');
+            projects.sort((a, b) => b.createdAt - a.createdAt);
+            document.getElementById('projectList').innerHTML = projects.map(p => `
+                <div onclick="navigateTo('dashboard', '${p.id}')" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer hover:shadow-md transition flex items-center justify-between">
+                    <span class="font-bold text-gray-800">📁 ${p.name}</span>
+                    <span class="text-gray-400">›</span>
+                </div>
+            `).join('') || `<p class="text-center text-gray-400 py-10">尚無專案</p>`;
+        }
+
+        async function renderDashboard() {
+            const p = await IDB.get('projects', currentProjectId);
+            document.getElementById('navTitle').innerText = p.name;
+            document.getElementById('dashboardProjectName').value = p.name;
+            allProjectPhotos = await IDB.getByIndex('photos', 'projectId', currentProjectId);
+            allProjectPhotos.sort((a, b) => a.createdAt - b.createdAt);
+            let total = 0; allProjectPhotos.forEach(x => total += (x.markers ? x.markers.length : 0));
+            document.getElementById('dashboardStats').innerText = `共 ${allProjectPhotos.length} 張照片 / ${total} 件商品`;
+            
+            document.getElementById('photoList').innerHTML = allProjectPhotos.map(x => `
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden cursor-pointer relative" onclick="navigateTo('editor', '${x.id}')">
+                    <div class="h-32 bg-gray-100 relative flex items-center justify-center">
+                        ${x.isPending ? `<span class="text-xs text-gray-500 font-bold">⚠️ 待上傳原圖</span>` : `<img src="${x.thumbnail}" class="w-full h-full object-cover">`}
+                    </div>
+                    <div class="p-3 text-sm font-bold text-gray-800 truncate">${x.name} <span class="text-xs text-gray-400">(${x.markers?x.markers.length:0})</span></div>
+                    <button onclick="event.stopPropagation(); deletePhoto('${x.id}')" class="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center shadow">×</button>
+                </div>
+            `).join('');
+        }
+
+        document.getElementById('newPhotoUpload').addEventListener('change', async function(e) {
+            const f = e.target.files[0]; if (!f) return;
+            showToast("⏳ 讀取照片中...");
+            const reader = new FileReader();
+            reader.onload = async (ev) => {
+                const tmp = new Image();
+                tmp.onload = async () => {
+                    const canvasT = document.createElement('canvas'), s = Math.min(300 / tmp.width, 1);
+                    canvasT.width = tmp.width * s; canvasT.height = tmp.height * s;
+                    canvasT.getContext('2d').drawImage(tmp, 0, 0, canvasT.width, canvasT.height);
+                    const photo = {
+                        id: 'PH_' + Date.now(), projectId: currentProjectId, name: f.name,
+                        blob: ev.target.result, thumbnail: canvasT.toDataURL('image/jpeg', 0.6),
+                        markers: [], createdAt: Date.now(), isPending: false,
+                        imageHash: `${tmp.width}x${tmp.height}_${ev.target.result.length}`
+                    };
+                    await IDB.put('photos', photo); navigateTo('editor', photo.id);
+                };
+                tmp.src = ev.target.result;
+            };
+            reader.readAsDataURL(f);
+            this.value = '';
+        });
+
+        async function deletePhoto(id) { if (confirm("刪除照片？")) { await IDB.delete('photos', id); renderDashboard(); } }
+        async function deleteCurrentProject() { if (confirm("⚠️ 刪除整個專案？")) { for (let p of allProjectPhotos) await IDB.delete('photos', p.id); await IDB.delete('projects', currentProjectId); navigateTo('projects'); } }
+
+        const canvas = document.getElementById('photoCanvas'), ctx = canvas.getContext('2d');
+
+        async function renderEditor() {
+            const p = await IDB.get('photos', currentPhotoId);
+            document.getElementById('editorPhotoName').value = p.name;
+            currentMarkers = p.markers || [];
+            allProjectPhotos = await IDB.getByIndex('photos', 'projectId', currentProjectId);
+            let max = 0; allProjectPhotos.forEach(x => (x.markers||[]).forEach(m => { const n = parseInt(m.id); if(n > max) max = n; }));
+            document.getElementById('nextNumber').value = max + 1;
+            renderRateSettings();
+            
+            // V18：待還原照片解鎖邏輯
+            if (p.isPending || !p.blob) {
+                document.getElementById('pendingUploadArea').classList.remove('hidden');
+                document.getElementById('pendingImageName').innerText = `請尋找檔名：「${p.name}」`;
+                document.getElementById('canvasContainer').classList.add('hidden');
+                document.getElementById('canvasHint').classList.add('hidden');
+                renderItems(); // 顯示匯入的商品列但無圖
+            } else {
+                document.getElementById('pendingUploadArea').classList.add('hidden');
+                document.getElementById('canvasContainer').classList.remove('hidden');
+                document.getElementById('canvasHint').classList.remove('hidden');
+                loadedImg.onload = () => {
+                    const scale = Math.min(1200 / loadedImg.width, 1);
+                    canvas.width = loadedImg.width * scale; canvas.height = loadedImg.height * scale;
+                    redrawCanvas(); renderItems();
+                };
+                loadedImg.src = p.blob;
+            }
+        }
+
+        // V18：處理編輯區內的照片解鎖上傳
+        window.handlePendingUpload = async function(e) {
+            const f = e.target.files[0]; if (!f) return;
+            showToast("⏳ 讀取照片中...");
+            const reader = new FileReader();
+            reader.onload = async (ev) => {
+                const tmp = new Image();
+                tmp.onload = async () => {
+                    const newHash = `${tmp.width}x${tmp.height}_${ev.target.result.length}`;
+                    const p = await IDB.get('photos', currentPhotoId);
+                    
+                    if (p.imageHash && p.imageHash !== newHash) {
+                        if(!confirm("⚠️ 警告：照片指紋與備份時不符，點位可能會偏移！\n確定要強制使用這張照片解鎖嗎？")) {
+                            e.target.value = ''; return;
+                        }
+                    }
+
+                    const canvasT = document.createElement('canvas'), s = Math.min(300 / tmp.width, 1);
+                    canvasT.width = tmp.width * s; canvasT.height = tmp.height * s;
+                    canvasT.getContext('2d').drawImage(tmp, 0, 0, canvasT.width, canvasT.height);
+                    
+                    p.blob = ev.target.result;
+                    p.thumbnail = canvasT.toDataURL('image/jpeg', 0.6);
+                    p.isPending = false;
+                    await IDB.put('photos', p);
+                    renderEditor();
+                };
+                tmp.src = ev.target.result;
+            };
+            reader.readAsDataURL(f);
+        }
+
+        async function updatePhotoName(newName) {
+            const p = await IDB.get('photos', currentPhotoId);
+            p.name = newName || "未命名照片";
+            await IDB.put('photos', p);
+        }
+
+        async function saveCurrentPhoto() { const p = await IDB.get('photos', currentPhotoId); if(p){ p.markers = currentMarkers; await IDB.put('photos', p); } }
+
+        function redrawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(loadedImg, 0, 0, canvas.width, canvas.height);
+            currentMarkers.forEach(m => {
+                ctx.beginPath(); ctx.arc(m.x, m.y, Math.max(30, canvas.width*0.03), 0, 2*Math.PI);
+                ctx.fillStyle = 'rgba(239,68,68,0.9)'; ctx.fill(); ctx.strokeStyle = 'white'; ctx.lineWidth = 4; ctx.stroke();
+                ctx.fillStyle = 'white'; ctx.font = `bold ${Math.max(24, canvas.width*0.03)}px sans-serif`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(m.id, m.x, m.y);
+            });
+        }
+
+        canvas.addEventListener('click', async (e) => {
+            const p = await IDB.get('photos', currentPhotoId);
+            if (p.isPending) return alert("請先上傳原圖解鎖！");
+
+            const r = canvas.getBoundingClientRect(), sX = canvas.width / r.width, sY = canvas.height / r.height;
+            const x = (e.clientX - r.left) * sX, y = (e.clientY - r.top) * sY;
+            let num = document.getElementById('nextNumber').value;
+            const exists = allProjectPhotos.some(p => (p.markers||[]).some(m => m.id === num.toString())) || currentMarkers.some(m => m.id === num.toString());
+            if (exists) { 
+                alert(`編號 ${num} 已重複，自動跳號。`); 
+                while(allProjectPhotos.some(p => (p.markers||[]).some(m => m.id === num.toString())) || currentMarkers.some(m => m.id === num.toString())) num++;
+            }
+            currentMarkers.push({ id: num.toString(), x, y, desc: '', localPrice: '', rateType: categories[0].id, rate: categories[0].rate });
+            currentMarkers.sort((a,b) => parseInt(a.id) - parseInt(b.id));
+            redrawCanvas(); renderItems();
+            document.getElementById('nextNumber').value = parseInt(num) + 1;
+            await saveCurrentPhoto();
+        });
+
+        function renderItems() {
+            document.getElementById('itemsContainer').innerHTML = currentMarkers.map(m => `
+                <div class="flex flex-col space-y-2 p-3 bg-white rounded-xl border shadow-sm">
+                    <div class="flex items-center space-x-2">
+                        <span class="font-bold text-red-500 text-lg w-8">${m.id}</span>
+                        <input type="text" value="${m.desc}" placeholder="說明" class="flex-1 p-2 border rounded-lg text-sm" onchange="updateMarker('${m.id}','desc',this.value)">
+                        <button onclick="removeItem('${m.id}')" class="text-red-500 p-2">🗑️</button>
+                    </div>
+                    <div class="flex items-center space-x-2 pl-10 text-sm">
+                        <input type="number" value="${m.localPrice}" placeholder="外幣" class="w-20 p-2 border rounded" oninput="updateMarker('${m.id}','localPrice',this.value)">
+                        <span>×</span>
+                        <select class="p-1 border rounded bg-gray-50 text-xs" onchange="updateMarker('${m.id}','rateType',this.value)">
+                            ${categories.map(c => `<option value="${c.id}" ${m.rateType===c.id?'selected':''}>${c.name}</option>`).join('')}
+                            <option value="custom" ${m.rateType==='custom'?'selected':''}>自訂</option>
+                        </select>
+                        <input type="number" id="rate_${m.id}" value="${m.rate}" step="0.01" class="w-16 p-2 border rounded text-xs" oninput="updateMarker('${m.id}','rate',this.value); document.getElementById('rateType_${m.id}').value='custom';">
+                        <span class="flex-1 text-right font-bold text-green-600">$${Math.ceil((parseFloat(m.localPrice||0)*parseFloat(m.rate||0))/5)*5}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        window.updateMarker = async (id, f, v) => {
+            const m = currentMarkers.find(x => x.id === id); if(!m) return;
+            m[f] = v; if (f === 'rateType' && v !== 'custom') m.rate = categories.find(c => c.id === v).rate;
+            renderItems(); await saveCurrentPhoto();
+        };
+
+        window.removeItem = async (id) => { currentMarkers = currentMarkers.filter(x => x.id !== id); redrawCanvas(); renderItems(); await saveCurrentPhoto(); };
+
+        function renderRateSettings() {
+            document.getElementById('rateSettingsContainer').innerHTML = categories.map((c, i) => `
+                <div class="flex items-center space-x-1">
+                    <input type="text" value="${c.name}" class="w-24 p-1 text-xs border rounded" onchange="updateCat('${c.id}','name',this.value)">
+                    <input type="number" value="${c.rate}" step="0.01" class="w-16 p-1 text-xs border rounded text-center" onchange="updateCat('${c.id}','rate',this.value)">
+                    ${i>0?`<button onclick="deleteCat('${c.id}')" class="text-red-400 px-1">×</button>`:''}
+                </div>
+            `).join('');
+        }
+        window.addGlobalCat = () => { categories.push({ id: 'cat_'+Date.now(), name: '新分類', rate: 0.3 }); localStorage.setItem('proxyAppCategories', JSON.stringify(categories)); renderRateSettings(); renderItems(); };
+        window.updateCat = (id, f, v) => {
+            const c = categories.find(x => x.id === id); if(!c) return;
+            if(f==='rate' && currentMarkers.some(m => m.rateType === id)) if(!confirm("更新已選商品？")) return renderRateSettings();
+            c[f] = (f==='rate'?parseFloat(v):v); localStorage.setItem('proxyAppCategories', JSON.stringify(categories));
+            currentMarkers.forEach(m => { if(m.rateType === id) m.rate = c.rate; }); renderRateSettings(); renderItems();
+        };
+        window.deleteCat = (id) => { categories = categories.filter(x => x.id !== id); localStorage.setItem('proxyAppCategories', JSON.stringify(categories)); renderRateSettings(); };
+
+        // === 匯出邏輯 ===
+        window.downloadCurrentImage = async () => {
+            const p = await IDB.get('photos', currentPhotoId);
+            if(p.isPending) return alert("請先解鎖上傳原圖再下載！");
+            if (currentMarkers.length === 0) return alert("請先標記商品！");
+            const data = canvas.toDataURL('image/jpeg', 0.95), l = document.createElement('a');
+            l.download = `標記_${document.getElementById('editorPhotoName').value}.jpg`; l.href = data; l.click();
+        };
+
+        window.exportProjectData = async () => {
+            const phs = await IDB.getByIndex('photos', 'projectId', currentProjectId); phs.sort((a,b)=>a.createdAt-b.createdAt);
+            let out = ""; phs.forEach(p => {
+                if(!p.markers || p.markers.length === 0) return;
+                p.markers.sort((a,b)=>parseInt(a.id)-parseInt(b.id)); out += `\n=== 🖼️ ${p.name} ===\n`;
+                p.markers.forEach(m => {
+                    const cN = m.rateType==='custom'?'自訂':(categories.find(x=>x.id===m.rateType)?.name || '未分類');
+                    const pr = Math.ceil((parseFloat(m.localPrice||0)*parseFloat(m.rate||0))/5)*5;
+                    out += `[${m.id}] ${m.desc} (${cN}) $${pr}\n`;
+                });
+            });
+            if(!out) return alert("專案內無任何商品標記！");
+            navigator.clipboard.writeText(out.trim()).then(()=>showToast("✅ 已複製全專案文字")).catch(err => {
+                const ta = document.createElement('textarea'); ta.value = out.trim(); document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); showToast("✅ 已複製");
+            });
+        };
+
+        window.exportProjectImages = async () => {
+            const phs = (await IDB.getByIndex('photos', 'projectId', currentProjectId)).filter(x => x.markers && x.markers.length > 0);
+            if(!phs.length) return alert("無標記照片");
+            showToast("⏳ 背景產生圖片中...");
+            const cT = document.createElement('canvas'), tX = cT.getContext('2d');
+            for(let i=0; i<phs.length; i++){
+                const p = phs[i];
+                if(p.isPending) continue; // 跳過待還原的照片
+                await new Promise(res => {
+                    const tI = new Image(); tI.onload = () => {
+                        const s = Math.min(1200/tI.width, 1); cT.width = tI.width*s; cT.height = tI.height*s;
+                        tX.drawImage(tI,0,0,cT.width,cT.height);
+                        p.markers.forEach(m => {
+                            tX.beginPath(); tX.arc(m.x, m.y, Math.max(30,cT.width*0.03),0,2*Math.PI);
+                            tX.fillStyle = 'rgba(239,68,68,0.9)'; tX.fill(); tX.strokeStyle = 'white'; tX.lineWidth = 4; tX.stroke();
+                            tX.fillStyle = 'white'; tX.font = `bold ${Math.max(24,cT.width*0.03)}px sans-serif`;
+                            tX.textAlign = 'center'; tX.textBaseline = 'middle'; tX.fillText(m.id, m.x, m.y);
+                        });
+                        const l = document.createElement('a'); l.download = `標記_${p.name.replace(/\.[^/.]+$/, "")}_${i+1}.jpg`; l.href = cT.toDataURL('image/jpeg', 0.9); l.click(); res();
+                    }; tI.src = p.blob;
+                });
+                await new Promise(r => setTimeout(r, 800));
+            }
+            showToast("✅ 下載完成 (請至「檔案」查看)");
+        };
+
+        // === V18 核心：全專案備份與還原邏輯 ===
+        window.exportProjectBackup = async () => {
+            const p = await IDB.get('projects', currentProjectId);
+            const photos = await IDB.getByIndex('photos', 'projectId', currentProjectId);
+            if (photos.length === 0) return alert("專案內沒有任何照片可備份！");
+
+            const backupObj = {
+                version: 18,
+                projectName: p.name,
+                categories: categories,
+                photos: photos.map(ph => ({
+                    name: ph.name,
+                    imageHash: ph.imageHash,
+                    markers: ph.markers || []
+                }))
+            };
+            
+            const backupStr = "BACKUP::" + btoa(encodeURIComponent(JSON.stringify(backupObj)));
+            navigator.clipboard.writeText(backupStr).then(()=>showToast("📦 全專案備份碼已複製！")).catch(err => {
+                const ta = document.createElement('textarea'); ta.value = backupStr; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); showToast("📦 已複製備份碼");
+            });
+        };
+
+        window.toggleImportArea = () => document.getElementById('importArea').classList.toggle('hidden');
+        
+        window.handleImport = async () => {
+            const raw = document.getElementById('importTextarea').value.trim(); if(!raw) return;
+            
+            if(raw.startsWith("BACKUP::")){
+                try {
+                    const data = JSON.parse(decodeURIComponent(atob(raw.replace("BACKUP::",""))));
+                    
+                    if (data.categories) { categories = data.categories; saveCategories(); }
+
+                    if (data.photos && Array.isArray(data.photos)) {
+                        for (let phData of data.photos) {
+                            const newPh = {
+                                id: 'PH_' + Date.now() + Math.random().toString().slice(2,7),
+                                projectId: currentProjectId,
+                                name: phData.name,
+                                blob: "", thumbnail: "", markers: phData.markers || [], createdAt: Date.now(),
+                                imageHash: phData.imageHash, isPending: true
+                            };
+                            await IDB.put('photos', newPh);
+                        }
+                        renderDashboard();
+                        alert(`✅ 已建立 ${data.photos.length} 張待還原照片！\n請點擊進入各照片並選擇「上傳原圖」解鎖。`);
+                    } else {
+                        alert("備份碼內沒有照片資料。");
+                    }
+                } catch(e) { alert("❌ 備份碼解析失敗，請確認代碼是否完整。"); }
+            } else {
+                alert("⚠️ 目前僅支援匯入 BACKUP:: 開頭的「全專案備份碼」。");
+            }
+            document.getElementById('importTextarea').value = "";
+            document.getElementById('importArea').classList.add('hidden');
+        };
+
+        window.onload = async () => { await initDB(); navigateTo('projects'); };
+    </script>
+</body>
+</html>
