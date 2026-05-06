@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>代購極速打點系統 V19 (容錯還原進化版)</title>
+    <title>代購極速打點系統 V20 (自動修復引擎版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         canvas { touch-action: none; width: 100%; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -122,7 +122,7 @@
     </div>
 
     <script>
-        const DB_NAME = 'ProxyAppProDB_V19';
+        const DB_NAME = 'ProxyAppProDB_V20';
         const DB_VERSION = 1;
         let db;
 
@@ -314,6 +314,9 @@
         }
 
         canvas.addEventListener('click', async (e) => {
+            const p = await IDB.get('photos', currentPhotoId);
+            if (p.isPending) return alert("請先上傳原圖解鎖！");
+
             const r = canvas.getBoundingClientRect(), sX = canvas.width / r.width, sY = canvas.height / r.height;
             const x = (e.clientX - r.left) * sX, y = (e.clientY - r.top) * sY;
             let num = document.getElementById('nextNumber').value;
@@ -344,7 +347,7 @@
                             ${categories.map(c => `<option value="${c.id}" ${m.rateType===c.id?'selected':''}>${c.name}</option>`).join('')}
                             <option value="custom" ${m.rateType==='custom'?'selected':''}>自訂</option>
                         </select>
-                        <input type="number" id="rate_${m.id}" value="${m.rate}" step="0.01" class="w-16 p-2 border rounded text-xs" oninput="updateMarker('${m.id}','rate',this.value)">
+                        <input type="number" id="rate_${m.id}" value="${m.rate}" step="0.01" class="w-16 p-2 border rounded text-xs" oninput="updateMarker('${m.id}','rate',this.value); document.getElementById('rateType_${m.id}').value='custom';">
                         <span class="flex-1 text-right font-bold text-green-600">$${Math.ceil((parseFloat(m.localPrice||0)*parseFloat(m.rate||0))/5)*5}</span>
                     </div>
                 </div>
@@ -378,7 +381,7 @@
 
         // === 匯出邏輯 ===
         window.downloadCurrentImage = async () => {
-            const p = await IDB.get('photos', currentPhotoId); if(p.isPending) return alert("請先解鎖上傳原圖！");
+            const p = await IDB.get('photos', currentPhotoId); if(p.isPending) return alert("請先解鎖上傳原圖再下載！");
             if (currentMarkers.length === 0) return alert("請先標記商品！");
             const l = document.createElement('a'); l.download = `標記_${document.getElementById('editorPhotoName').value}.jpg`; l.href = canvas.toDataURL('image/jpeg', 0.95); l.click();
         };
@@ -431,7 +434,7 @@
             if (photos.length === 0) return alert("沒有照片可備份！");
 
             const backupObj = {
-                version: 19,
+                version: 20,
                 projectName: p.name,
                 categories: categories,
                 photos: photos.map(ph => ({ name: ph.name, imageHash: ph.imageHash, markers: ph.markers || [] }))
@@ -444,20 +447,45 @@
 
         window.toggleImportArea = () => document.getElementById('importArea').classList.toggle('hidden');
         
-        // V19：無敵清道夫與相容性還原邏輯
+        // ================= V20 核心：自動修復與精準報錯引擎 =================
         window.handleImport = async () => {
             const raw = document.getElementById('importTextarea').value; 
             if(!raw.trim()) return;
             
-            // 處理備份碼還原 (加入無敵去空白、去換行正則表達式)
             if(raw.trim().startsWith("BACKUP::")){
                 try {
-                    const cleanBase64 = raw.replace(/^[\s\S]*?BACKUP::/, '').replace(/\s+/g, '');
-                    const data = JSON.parse(decodeURIComponent(atob(cleanBase64)));
+                    // 1. 自動清除所有可能干擾的空白與換行
+                    let cleanBase64 = raw.replace(/^[\s\S]*?BACKUP::/, '').replace(/\s+/g, '');
                     
+                    // 2. 自動補齊遺失的 Padding (=)
+                    while (cleanBase64.length % 4 !== 0) {
+                        cleanBase64 += '=';
+                    }
+                    
+                    let decodedStr, jsonStr, data;
+                    
+                    // 3. 醫療級精準報錯機制
+                    try { 
+                        decodedStr = atob(cleanBase64); 
+                    } catch(e) { 
+                        throw new Error("Base64 解碼失敗。請確認是否漏複製了最後幾個英文字母。"); 
+                    }
+                    
+                    try { 
+                        jsonStr = decodeURIComponent(decodedStr); 
+                    } catch(e) { 
+                        throw new Error("文字轉碼失敗，代碼可能混入了不合法的字元。"); 
+                    }
+                    
+                    try { 
+                        data = JSON.parse(jsonStr); 
+                    } catch(e) { 
+                        throw new Error("資料格式損毀！如果是舊版(含照片)的備份碼，可能因為字數過長被 LINE 截斷了。"); 
+                    }
+                    
+                    // 4. 解析成功，開始還原資料
                     if (data.categories) { categories = data.categories; saveCategories(); }
 
-                    // V18/V19 全專案備份
                     if (data.photos && Array.isArray(data.photos)) {
                         for (let phData of data.photos) {
                             const newPh = {
@@ -469,9 +497,8 @@
                             await IDB.put('photos', newPh);
                         }
                         renderDashboard();
-                        alert(`✅ 已建立 ${data.photos.length} 張待還原照片！`);
+                        alert(`✅ 成功還原！已建立 ${data.photos.length} 張待解鎖照片。`);
                     } 
-                    // V17 單圖備份
                     else if (data.markers) {
                         const newPh = {
                             id: 'PH_' + Date.now() + Math.random().toString().slice(2,7),
@@ -481,13 +508,16 @@
                         };
                         await IDB.put('photos', newPh);
                         renderDashboard();
-                        alert(`✅ 已建立 1 張單圖還原照片！`);
-                    } else { alert("⚠️ 備份碼內無資料"); }
+                        alert(`✅ 成功還原！已建立 1 張單圖待解鎖照片。`);
+                    } else { 
+                        alert("⚠️ 備份碼解析成功，但裡面沒有任何照片資料。"); 
+                    }
+
                 } catch(e) { 
-                    alert("❌ 備份碼解析失敗！\n1. 請確認代碼複製完整。\n2. 可能是跨裝置複製遺漏字元。"); 
+                    alert(`❌ 解析失敗：\n${e.message}`); 
                 }
             } else {
-                // 處理純文字訂單匯入，自動建立一張待還原照片裝點位
+                // 處理純文字訂單匯入
                 const lines = raw.split('\n');
                 let tempMarkers = [];
                 lines.forEach(line => {
@@ -532,9 +562,11 @@
                         blob: "", thumbnail: "", markers: tempMarkers, createdAt: Date.now(),
                         imageHash: null, isPending: true
                     };
-                    await IDB.put('photos', newPh); renderDashboard();
-                    alert(`✅ 成功從純文字解析 ${tempMarkers.length} 件商品！\n已建立待還原區，點擊進入可上傳原圖解鎖。`);
-                } else { alert("⚠️ 格式錯誤，請確認文字包含 [編號]。"); }
+                    IDB.put('photos', newPh).then(() => {
+                        renderDashboard();
+                        alert(`✅ 成功從純文字解析 ${tempMarkers.length} 件商品！\n已建立待還原區，點擊進入可上傳原圖解鎖。`);
+                    });
+                } else { alert("⚠️ 格式錯誤，請確認文字包含 [編號] 格式。"); }
             }
             document.getElementById('importTextarea').value = ""; document.getElementById('importArea').classList.add('hidden');
         };
