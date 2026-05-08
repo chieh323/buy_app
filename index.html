@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>代購極速打點系統 V20 (自動修復引擎版)</title>
+    <title>代購極速打點系統 V21 (完美修復版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         canvas { touch-action: none; width: 100%; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -29,6 +29,7 @@
     <main class="flex-1 overflow-y-auto pb-24">
         <div class="max-w-3xl mx-auto p-4">
 
+            <!-- ================= VIEW 1: 專案大廳 ================= -->
             <div id="view-projects" class="view active space-y-4">
                 <button onclick="createNewProject()" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 px-4 rounded-xl shadow transition text-lg flex items-center justify-center">
                     <span class="text-2xl mr-2">+</span> 建立新連線專案
@@ -36,6 +37,7 @@
                 <div id="projectList" class="grid gap-3 mt-6"></div>
             </div>
 
+            <!-- ================= VIEW 2: 專案儀表板 ================= -->
             <div id="view-dashboard" class="view space-y-4">
                 <div class="bg-white p-4 rounded-xl shadow border-l-4 border-blue-500">
                     <input type="text" id="dashboardProjectName" class="text-xl font-bold text-gray-800 w-full bg-transparent border-b border-dashed border-gray-300 focus:outline-none focus:border-blue-500 pb-1" onchange="updateProjectName(this.value)">
@@ -78,6 +80,7 @@
                 </button>
             </div>
 
+            <!-- ================= VIEW 3: 照片編輯區 ================= -->
             <div id="view-editor" class="view space-y-4">
                 <div class="bg-white p-3 rounded-xl shadow flex items-center justify-between">
                     <input type="text" id="editorPhotoName" class="font-bold text-gray-800 flex-1 bg-transparent border-b border-dashed border-gray-300 focus:outline-none focus:border-blue-500 pb-1" onchange="updatePhotoName(this.value)">
@@ -121,8 +124,9 @@
         通知
     </div>
 
+    <!-- ================= JavaScript ================= -->
     <script>
-        const DB_NAME = 'ProxyAppProDB_V20';
+        const DB_NAME = 'ProxyAppProDB_V21';
         const DB_VERSION = 1;
         let db;
 
@@ -154,6 +158,11 @@
         let loadedImg = new Image();
         let currentMarkers = [], allProjectPhotos = [];
         let categories = JSON.parse(localStorage.getItem('proxyAppCategories')) || [{ id: 'cat_0', name: '未分類', rate: 1.0 }];
+
+        // V21 修復：補回被遺漏的儲存函數
+        function saveCategories() {
+            localStorage.setItem('proxyAppCategories', JSON.stringify(categories));
+        }
 
         function showToast(msg) {
             const t = document.getElementById('toast');
@@ -371,15 +380,14 @@
                 </div>
             `).join('');
         }
-        window.addGlobalCat = () => { categories.push({ id: 'cat_'+Date.now(), name: '新分類', rate: 0.3 }); localStorage.setItem('proxyAppCategories', JSON.stringify(categories)); renderRateSettings(); renderItems(); };
+        window.addGlobalCat = () => { categories.push({ id: 'cat_'+Date.now(), name: '新分類', rate: 0.3 }); saveCategories(); renderRateSettings(); renderItems(); };
         window.updateCat = (id, f, v) => {
             const c = categories.find(x => x.id === id); if(!c) return;
-            c[f] = (f==='rate'?parseFloat(v):v); localStorage.setItem('proxyAppCategories', JSON.stringify(categories));
+            c[f] = (f==='rate'?parseFloat(v):v); saveCategories();
             currentMarkers.forEach(m => { if(m.rateType === id) m.rate = c.rate; }); renderRateSettings(); renderItems();
         };
-        window.deleteCat = (id) => { categories = categories.filter(x => x.id !== id); localStorage.setItem('proxyAppCategories', JSON.stringify(categories)); renderRateSettings(); };
+        window.deleteCat = (id) => { categories = categories.filter(x => x.id !== id); saveCategories(); renderRateSettings(); };
 
-        // === 匯出邏輯 ===
         window.downloadCurrentImage = async () => {
             const p = await IDB.get('photos', currentPhotoId); if(p.isPending) return alert("請先解鎖上傳原圖再下載！");
             if (currentMarkers.length === 0) return alert("請先標記商品！");
@@ -434,7 +442,7 @@
             if (photos.length === 0) return alert("沒有照片可備份！");
 
             const backupObj = {
-                version: 20,
+                version: 21,
                 projectName: p.name,
                 categories: categories,
                 photos: photos.map(ph => ({ name: ph.name, imageHash: ph.imageHash, markers: ph.markers || [] }))
@@ -447,43 +455,20 @@
 
         window.toggleImportArea = () => document.getElementById('importArea').classList.toggle('hidden');
         
-        // ================= V20 核心：自動修復與精準報錯引擎 =================
         window.handleImport = async () => {
             const raw = document.getElementById('importTextarea').value; 
             if(!raw.trim()) return;
             
             if(raw.trim().startsWith("BACKUP::")){
                 try {
-                    // 1. 自動清除所有可能干擾的空白與換行
                     let cleanBase64 = raw.replace(/^[\s\S]*?BACKUP::/, '').replace(/\s+/g, '');
-                    
-                    // 2. 自動補齊遺失的 Padding (=)
-                    while (cleanBase64.length % 4 !== 0) {
-                        cleanBase64 += '=';
-                    }
+                    while (cleanBase64.length % 4 !== 0) cleanBase64 += '=';
                     
                     let decodedStr, jsonStr, data;
+                    try { decodedStr = atob(cleanBase64); } catch(e) { throw new Error("Base64 解碼失敗。請確認是否漏複製了最後幾個英文字母。"); }
+                    try { jsonStr = decodeURIComponent(decodedStr); } catch(e) { throw new Error("文字轉碼失敗，代碼可能混入了不合法的字元。"); }
+                    try { data = JSON.parse(jsonStr); } catch(e) { throw new Error("資料格式損毀！如果是舊版(含照片)的備份碼，可能因為字數過長被截斷了。"); }
                     
-                    // 3. 醫療級精準報錯機制
-                    try { 
-                        decodedStr = atob(cleanBase64); 
-                    } catch(e) { 
-                        throw new Error("Base64 解碼失敗。請確認是否漏複製了最後幾個英文字母。"); 
-                    }
-                    
-                    try { 
-                        jsonStr = decodeURIComponent(decodedStr); 
-                    } catch(e) { 
-                        throw new Error("文字轉碼失敗，代碼可能混入了不合法的字元。"); 
-                    }
-                    
-                    try { 
-                        data = JSON.parse(jsonStr); 
-                    } catch(e) { 
-                        throw new Error("資料格式損毀！如果是舊版(含照片)的備份碼，可能因為字數過長被 LINE 截斷了。"); 
-                    }
-                    
-                    // 4. 解析成功，開始還原資料
                     if (data.categories) { categories = data.categories; saveCategories(); }
 
                     if (data.photos && Array.isArray(data.photos)) {
@@ -509,15 +494,10 @@
                         await IDB.put('photos', newPh);
                         renderDashboard();
                         alert(`✅ 成功還原！已建立 1 張單圖待解鎖照片。`);
-                    } else { 
-                        alert("⚠️ 備份碼解析成功，但裡面沒有任何照片資料。"); 
-                    }
+                    } else { alert("⚠️ 備份碼解析成功，但裡面沒有任何照片資料。"); }
 
-                } catch(e) { 
-                    alert(`❌ 解析失敗：\n${e.message}`); 
-                }
+                } catch(e) { alert(`❌ 解析失敗：\n${e.message}`); }
             } else {
-                // 處理純文字訂單匯入
                 const lines = raw.split('\n');
                 let tempMarkers = [];
                 lines.forEach(line => {
